@@ -8,7 +8,15 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
 import database as db
+from dotenv import load_dotenv
 
+
+load_dotenv()
+
+TOKEN = os.getenv("TOKEN")
+
+if not TOKEN:
+    raise ValueError("TOKEN not found in environment variables")
 TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
