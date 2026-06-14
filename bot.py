@@ -1,27 +1,27 @@
+import os
 import asyncio
 import logging
 import json
-import os
 from datetime import date
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-# ---------------- TOKEN (PRODUCTION SAFE) ----------------
-TOKEN = os.getenv("TOKEN")
-
-if not TOKEN:
-    raise ValueError("BOT TOKEN NOT FOUND. Set environment variable TOKEN.")
+# =========================
+# TOKEN (LOCAL TEST ONLY)
+# =========================
+TOKEN = "8917128981:AAE9XsMaaj1Xp1hQ-hAGBRw2ggw437eurIc"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ---------------- MEMORY FILE ----------------
+# =========================
+# MEMORY FILE
+# =========================
 MEMORY_FILE = "memory.json"
 
 
-# ---------------- LOAD MEMORY ----------------
 def load_memory():
     if os.path.exists(MEMORY_FILE):
         with open(MEMORY_FILE, "r", encoding="utf-8") as f:
@@ -29,16 +29,14 @@ def load_memory():
     return {}
 
 
-# ---------------- SAVE MEMORY (SAFE) ----------------
 def save_memory(data):
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        json.dump(data, f, indent=4)
 
 
 memory = load_memory()
 
 
-# ---------------- INIT USER ----------------
 def init_user(user_id: str):
     if user_id not in memory:
         memory[user_id] = {
@@ -48,12 +46,10 @@ def init_user(user_id: str):
         }
         save_memory(memory)
 
-    memory[user_id].setdefault("goal", None)
-    memory[user_id].setdefault("streak", 0)
-    memory[user_id].setdefault("last_active", None)
 
-
-# ---------------- START COMMAND ----------------
+# =========================
+# START COMMAND
+# =========================
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     user_id = str(message.from_user.id)
@@ -63,123 +59,68 @@ async def start_handler(message: Message):
 
     if user["goal"]:
         await message.answer(
-            f"""
-🔥 STRICT COACH MODE
-
-GOAL: {user['goal']}
-STREAK: {user['streak']} days
-
-Did you complete today's task? (Yes/No)
-"""
+            f"GOAL: {user['goal']}\nSTREAK: {user['streak']}\n\nDid you complete today? (Yes/No)"
         )
     else:
-        await message.answer(
-            "🔥 STRICT COACH MODE ACTIVE\n\nSend me your goal."
-        )
+        await message.answer("Send me your goal to start strict coaching.")
 
 
-# ---------------- MAIN COACH LOGIC ----------------
+# =========================
+# MAIN LOGIC
+# =========================
 @dp.message()
 async def coach_handler(message: Message):
-    try:
-        user_id = str(message.from_user.id)
-        init_user(user_id)
+    user_id = str(message.from_user.id)
+    init_user(user_id)
 
-        text = message.text.lower()
-        today = str(date.today())
+    text = message.text.lower()
+    today = str(date.today())
 
-        user = memory[user_id]
+    user = memory[user_id]
 
-        # ---------------- CHECK-IN SYSTEM ----------------
-        if user["goal"] and text in ["yes", "no"]:
-            if user["last_active"] == today:
-                await message.answer("Already checked in today.")
-                return
+    # SET GOAL
+    if not user["goal"]:
+        user["goal"] = message.text
+        user["streak"] = 0
+        user["last_active"] = None
+        save_memory(memory)
 
-            if text == "yes":
-                user["streak"] += 1
-                reply = f"Good. Streak = {user['streak']} 🔥"
-            else:
-                user["streak"] = 0
-                reply = "Streak reset ❌ Stay disciplined."
-
-            user["last_active"] = today
-            save_memory(memory)
-
-            await message.answer(reply)
-            return
-
-        # ---------------- SET GOAL ----------------
-        if not user["goal"]:
-            user["goal"] = message.text
-            user["streak"] = 0
-            user["last_active"] = None
-
-            save_memory(memory)
-
-            await message.answer(
-                f"""
-🔥 GOAL SET
-
-{message.text}
-
-ACTION PLAN:
-1. Work daily on your goal
-2. Complete at least 1 task per day
-3. Never break streak twice in a row
-
-Now answer:
-Did you complete today's task? (Yes/No)
-"""
-            )
-            return
-
-        # ---------------- DEFAULT RESPONSE ----------------
         await message.answer(
-            f"""
-GOAL: {user['goal']}
-STREAK: {user['streak']} days
-
-Did you complete today's task? (Yes/No)
-"""
+            f"GOAL SET:\n{message.text}\n\nNow answer: Did you complete today? (Yes/No)"
         )
+        return
 
-    except Exception as e:
-        logging.error(str(e))
-        await message.answer("⚠️ Error occurred but system recovered. Try again.")
+    # DAILY CHECK-IN
+    if text in ["yes", "no"]:
+        if user["last_active"] == today:
+            await message.answer("Already checked in today.")
+            return
 
+        if text == "yes":
+            user["streak"] += 1
+            reply = f"Good. Streak = {user['streak']} 🔥"
+        else:
+            user["streak"] = 0
+            reply = "Streak reset ❌ Stay disciplined."
 
-# ---------------- DAILY REMINDER SYSTEM ----------------
-async def daily_reminder():
-    while True:
-        await asyncio.sleep(3600)  # every 1 hour (production-safe)
+        user["last_active"] = today
+        save_memory(memory)
 
-        today = str(date.today())
+        await message.answer(reply)
+        return
 
-        for user_id, data in memory.items():
-            if data["goal"] and data["last_active"] != today:
-                try:
-                    await bot.send_message(
-                        user_id,
-                        f"""
-⏰ DAILY REMINDER
-
-GOAL: {data['goal']}
-STREAK: {data['streak']} days
-
-Did you complete today's task? (Yes/No)
-"""
-                    )
-                except:
-                    pass
+    # DEFAULT RESPONSE
+    await message.answer(
+        f"GOAL: {user['goal']}\nSTREAK: {user['streak']}\n\nYes or No?"
+    )
 
 
-# ---------------- MAIN ENTRY ----------------
+# =========================
+# RUN BOT
+# =========================
 async def main():
     logging.basicConfig(level=logging.INFO)
     print("Bot is running...")
-
-    asyncio.create_task(daily_reminder())
 
     await dp.start_polling(bot)
 
