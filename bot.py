@@ -1,130 +1,92 @@
 import os
 import asyncio
 import logging
-import json
 from datetime import date
 
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
-# =========================
-# TOKEN (FROM ENV ONLY)
-# =========================
+import database as db
+
 TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
-    raise ValueError("BOT TOKEN NOT FOUND. Set environment variable TOKEN.")
+    raise ValueError("TOKEN not found in environment variables")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# =========================
-# MEMORY FILE
-# =========================
-MEMORY_FILE = "memory.json"
 
-
-def load_memory():
-    if os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_memory(data):
-    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
-
-memory = load_memory()
-
-
-def init_user(user_id: str):
-    if user_id not in memory:
-        memory[user_id] = {
-            "goal": None,
-            "streak": 0,
-            "last_active": None
-        }
-        save_memory(memory)
-
-
-# =========================
-# START COMMAND
-# =========================
+# -------------------------
+# START
+# -------------------------
 @dp.message(CommandStart())
-async def start_handler(message: Message):
-    user_id = str(message.from_user.id)
-    init_user(user_id)
+async def start(message: Message):
+    user_id = message.from_user.id
 
-    user = memory[user_id]
+    db.init_user(user_id)
 
-    if user["goal"]:
-        await message.answer(
-            f"GOAL: {user['goal']}\nSTREAK: {user['streak']}\n\nDid you complete today? (Yes/No)"
-        )
-    else:
-        await message.answer("Send me your goal to start strict coaching.")
+    await message.answer(
+        "Welcome to AI Coach Bot 🚀\n\n"
+        "Use /setgoal to set your goal."
+    )
 
 
-# =========================
-# MAIN LOGIC
-# =========================
+# -------------------------
+# SET GOAL
+# -------------------------
+@dp.message(Command("setgoal"))
+async def set_goal(message: Message):
+    await message.answer("Send me your goal in one message.")
+
+
+# -------------------------
+# SAVE GOAL
+# -------------------------
 @dp.message()
-async def coach_handler(message: Message):
-    user_id = str(message.from_user.id)
-    init_user(user_id)
-
-    text = message.text.lower()
+async def handle_message(message: Message):
+    user_id = message.from_user.id
+    text = message.text
     today = str(date.today())
 
-    user = memory[user_id]
+    user = db.get_user(user_id)
 
-    # SET GOAL
+    # if no goal yet → set it
     if not user["goal"]:
-        user["goal"] = message.text
-        user["streak"] = 0
-        user["last_active"] = None
-        save_memory(memory)
-
+        db.set_goal(user_id, text)
         await message.answer(
-            f"GOAL SET:\n{message.text}\n\nNow answer: Did you complete today? (Yes/No)"
+            f"Goal saved ✅\n\nNow tell me daily: Did you complete it today? (Yes/No)"
         )
         return
 
-    # DAILY CHECK-IN
-    if text in ["yes", "no"]:
+    # check-in logic
+    if text.lower() in ["yes", "no"]:
         if user["last_active"] == today:
-            await message.answer("Already checked in today.")
+            await message.answer("You already checked in today.")
             return
 
-        if text == "yes":
-            user["streak"] += 1
-            reply = f"Good. Streak = {user['streak']} 🔥"
+        if text.lower() == "yes":
+            db.update_streak(user_id, user["streak"] + 1)
+            reply = f"Good job 🔥 Streak: {user['streak'] + 1}"
         else:
-            user["streak"] = 0
+            db.update_streak(user_id, 0)
             reply = "Streak reset ❌ Stay disciplined."
 
-        user["last_active"] = today
-        save_memory(memory)
+        db.set_last_active(user_id, today)
 
         await message.answer(reply)
         return
 
-    # DEFAULT RESPONSE
-    await message.answer(
-        f"GOAL: {user['goal']}\nSTREAK: {user['streak']}\n\nYes or No?"
-    )
+    await message.answer("Reply Yes or No.")
 
 
-# =========================
-# RUN BOT
-# =========================
+# -------------------------
+# RUN
+# -------------------------
 async def main():
     logging.basicConfig(level=logging.INFO)
-    print("Bot is running...")
-
+    print("Bot running...")
     await dp.start_polling(bot)
 
 
