@@ -8,6 +8,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
+
+TOKEN = os.getenv("TOKEN")
+
+if not TOKEN:
+    raise ValueError("BOT TOKEN NOT FOUND. Set environment variable TOKEN.")
 # =========================
 # TOKEN (LOCAL TEST ONLY)
 # =========================
