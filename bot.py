@@ -8,15 +8,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-
+# =========================
+# TOKEN (FROM ENV ONLY)
+# =========================
 TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
     raise ValueError("BOT TOKEN NOT FOUND. Set environment variable TOKEN.")
-# =========================
-# TOKEN (LOCAL TEST ONLY)
-# =========================
-TOKEN = "8917128981:AAE9XsMaaj1Xp1hQ-hAGBRw2ggw437eurIc"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
