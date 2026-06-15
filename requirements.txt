@@ -1,1 +1,6 @@
-aiogram==3.4.1
+aiogram
+python-dotenv
+faiss-cpu
+sentence-transformers
+numpy
+pypdf

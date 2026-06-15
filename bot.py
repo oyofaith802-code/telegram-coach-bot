@@ -4,23 +4,18 @@ import logging
 from datetime import date
 
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import Message
 
+from rag import build, search
 import database as db
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
-
 if not TOKEN:
-    raise ValueError("TOKEN not found in environment variables")
-TOKEN = os.getenv("TOKEN")
-
-if not TOKEN:
-    raise ValueError("TOKEN not found in environment variables")
+    raise ValueError("TOKEN not found")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -31,69 +26,66 @@ dp = Dispatcher()
 # -------------------------
 @dp.message(CommandStart())
 async def start(message: Message):
-    user_id = message.from_user.id
-
-    db.init_user(user_id)
-
-    await message.answer(
-        "Welcome to AI Coach Bot 🚀\n\n"
-        "Use /setgoal to set your goal."
-    )
+    await message.answer("Send me your goal to start coaching.")
 
 
 # -------------------------
-# SET GOAL
-# -------------------------
-@dp.message(Command("setgoal"))
-async def set_goal(message: Message):
-    await message.answer("Send me your goal in one message.")
-
-
-# -------------------------
-# SAVE GOAL
+# MAIN HANDLER
 # -------------------------
 @dp.message()
-async def handle_message(message: Message):
+async def handler(message: Message):
     user_id = message.from_user.id
-    text = message.text
+    text = message.text.strip()
     today = str(date.today())
 
     user = db.get_user(user_id)
 
-    # if no goal yet → set it
-    if not user["goal"]:
+    if not user:
+        user = {"goal": None, "streak": 0, "last_active": None}
+
+    # 1. SET GOAL
+    if not user.get("goal"):
         db.set_goal(user_id, text)
-        await message.answer(
-            f"Goal saved ✅\n\nNow tell me daily: Did you complete it today? (Yes/No)"
-        )
+        await message.answer("Goal saved ✅\nNow answer daily: Yes / No")
         return
 
-    # check-in logic
+    # 2. CHECK-IN
     if text.lower() in ["yes", "no"]:
-        if user["last_active"] == today:
-            await message.answer("You already checked in today.")
+
+        if user.get("last_active") == today:
+            await message.answer("Already checked in today.")
             return
 
         if text.lower() == "yes":
-            db.update_streak(user_id, user["streak"] + 1)
-            reply = f"Good job 🔥 Streak: {user['streak'] + 1}"
+            new_streak = user.get("streak", 0) + 1
+            db.update_streak(user_id, new_streak)
+            reply = f"Good job 🔥 Streak: {new_streak}"
         else:
             db.update_streak(user_id, 0)
             reply = "Streak reset ❌ Stay disciplined."
 
         db.set_last_active(user_id, today)
-
         await message.answer(reply)
         return
 
-    await message.answer("Reply Yes or No.")
+    # 3. RAG RESPONSE
+    results, _ = search(text)   # IMPORTANT FIX
+
+    context = "\n\n".join(results)
+
+    await message.answer(
+        f"📚 From your coaching book:\n\n{context}\n\n---\n🧭 {text}"
+    )
 
 
 # -------------------------
-# RUN
+# START BOT
 # -------------------------
 async def main():
     logging.basicConfig(level=logging.INFO)
+
+    build()   # MUST RUN FIRST
+
     print("Bot running...")
     await dp.start_polling(bot)
 
